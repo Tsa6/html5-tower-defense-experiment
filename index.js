@@ -1,4 +1,13 @@
 window.onload = function () {
+  /*
+    My programming practice notes:
+      * every major feature as part of updating the game (such as towers, enemies)
+        are handeled in a separate function
+      * I use Object.assign to copy objects in order to eliminate references when spawning enemies
+        and to get the ability to modify them individually
+      * Components such as buttons or selections within the canvas are classes
+  */
+
   let canvas = document.getElementById('canvas')
   let ctx = canvas.getContext('2d')
   
@@ -27,47 +36,59 @@ window.onload = function () {
     tower: 'simple'
   }
 
+  /**
+    speed - movement speed multiplier - higher: faster
+    node - always 1
+    health - health of the enemy
+    reward - money earned when killed
+    frequency - milliseconds to spawn in
+    icon - currently color of the enemy
+  */
   let Enemies = {
     basic: {
       speed: 10,
       node: 1,
-      dmg: 50,
       health: 50,
-      reward: 10
+      reward: 10,
+      frequency: 1000,
+      icon: '#f00'
     },
     speedy: {
       speed: 20,
       node: 1,
-      dmg: 60,
       health: 60,
-      reward: 15
+      reward: 15,
+      frequency: 500,
+      icon: '#f11'
     },
     tough: {
       speed: 5,
       node: 1,
-      dmg: 100,
       health: 100,
-      reward: 20
+      reward: 20,
+      frequency: 1000,
+      icon: '#f40'
     }
   }
 
   let Towers = {
     simple: {
-      range: 6,
-      damage: 15,
-      rate: 20,
-      name: 'Simple',
-      speed: 30,
-      cost: 50,
-      icon: null
+      range: 6, // range in tiles
+      damage: 15, // damage to deal to enemies when hit
+      rate: 20, // rate of fire, higher - slower
+      name: 'Simple', // name of the tower
+      speed: 30, // bullet speed, higher - faster
+      cost: 50, // cost to place
+      icon: '#333' // currently color
     }
   }
 
   let Maps = {
-    width: 20,
-    height: 20,
-    tile: 32,
+    width: 20, // Width of the map
+    height: 20, // Height of the map
+    tile: 32, // Tile size in pixels (each coordinate is multiplied by this number in rendering)
     first: {
+      // map rendering data
       tiles: [
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
@@ -90,6 +111,7 @@ window.onload = function () {
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
       ],
+      // enemy follow path
       pathgen: [
         {x: 1, y: 2, end: false},
         {x: 14, y: 2, end: false},
@@ -155,21 +177,39 @@ window.onload = function () {
     }
   }
 
+  // Use this function to spawn enemies depending on round
   function nextWave () {
     Game.wave++
     
-    if (Game.wave % 5 === 0) {
-      addEnemies(Game.wave / 5, Enemies.speedy)
-    } else if (Game.wave % 10 === 0) {
-      addEnemies(1, Enemies.tough)
-    } else if (Game.wave > 5) {
+    if (Game.wave < 5) {
+      addEnemies(10 + Game.wave, Enemies.basic)
+    } else {
       addEnemies(10 + Game.wave, Enemies.speedy)
-      if (Game.wave > 10) {
-        addEnemies(Game.wave - 10, Enemies.tough)
-      }
     }
-    
-    addEnemies(10 + Game.wave, Enemies.basic)
+
+    if (Game.wave > 10) {
+      addEnemies(Game.wave - 5, Enemies.tough)
+    }
+
+    if (Game.wave % 5 === 0) {
+      addEnemies(Game.wave / 5, Enemies.tough)
+    }
+  }
+
+  // Use this function to modify the enemies spawned each round
+  function waveEnemyModifer (enemy, round) {
+    // Reduce the time between enemy spawns
+    let fr = enemy.frequency - 2 * round
+    if (fr < 100) {
+      fr = 100
+    }
+
+    enemy.frequency = fr
+
+    // Increase enemy health
+    enemy.health += round * 5
+
+    return enemy
   }
 
   function getTileIn (map, x, y) {
@@ -315,17 +355,25 @@ window.onload = function () {
 
   function addEnemies (cnt, type) {
     Game.enemySpawn += cnt
+
+    let path = Game.map.pathgen[0]
+    let enemyCopy = Object.assign({
+      x: path.x,
+      y: path.y
+    }, type)
+
+    enemyCopy = waveEnemyModifer(enemyCopy, Game.wave)
+    enemyCopy.dmg = enemyCopy.health
+
     let ect = setInterval(() => {
       if (Game.enemySpawn === 0) return clearInterval(ect)
       Game.enemySpawn--
 
-      Game.enemies.push(Object.assign({
-        x: Game.map.pathgen[0].x, y: Game.map.pathgen[0].y
-      }, type))
-    }, 1000)
+      Game.enemies.push(Object.assign({}, enemyCopy))
+    }, enemyCopy.frequency)
   }
 
-  function towerAt (x, y) {
+  function getTowerAt (x, y) {
     for (let i in Game.towers) {
       let tower = Game.towers[i]
       if (tower.x === x && tower.y === y) return tower
@@ -334,13 +382,46 @@ window.onload = function () {
     return null
   }
 
+  function canPlaceTowerAt (x, y) {
+    let tileAt = getTileIn(Game.map.tiles, x, y)
+    if (tileAt !== 0) return false
+
+    // Do not overlap towers
+    if (getTowerAt(x, y) !== null) return false
+
+    // Prevent towers from being placed right next to each-other
+    let can = true
+    for (let i in Game.towers) {
+      if (can === false) break
+      let tower = Game.towers[i]
+
+      // tower placement restriction visualization
+      for (let i = 0; i < 4; i++) {
+        if (can === false) break
+        let ax = tower.x
+        let ay = tower.y
+        if (i == 0) {
+          ax -= 1
+        } else if (i == 1) {
+          ax += 1
+        } else if (i == 2) {
+          ay -= 1
+        } else if (i == 3) {
+          ay += 1
+        }
+        
+        if (ax < 0 || ay < 0 || ay > Maps.height || ax > Maps.width) continue
+        if (ax === x && ay === y) can = false
+      }
+    }
+
+    return can
+  }
+
   function placeTower (tower, x, y) {
     if (tower.cost > Game.money) return // no money
-    
-    let tileAt = getTileIn(Game.map.tiles, x, y)
-    if (tileAt !== 0) return
 
-    if (towerAt(x, y)) return
+    if (!canPlaceTowerAt(x, y)) return
 
     Game.money -= tower.cost
     Game.towers.push(Object.assign({
@@ -408,15 +489,37 @@ window.onload = function () {
 */
     for (let i in Game.towers) {
       let tower = Game.towers[i]
-      ctx.fillStyle = '#333'
+      ctx.fillStyle = tower.icon
       ctx.fillRect(tower.x * mt + 2, tower.y * mt + 2, 28, 28)
+
+      if (Game.state === 2 && Game.tower) {
+        // tower placement restriction visualization
+        for (let i = 0; i < 4; i++) {
+          let ax = tower.x
+          let ay = tower.y
+          if (i == 0) {
+            ax -= 1
+          } else if (i == 1) {
+            ax += 1
+          } else if (i == 2) {
+            ay -= 1
+          } else if (i == 3) {
+            ay += 1
+          }
+          
+          if (ax < 0 || ay < 0 || ay > Maps.height || ax > Maps.width) continue
+          if (getTileIn(Game.map.tiles, ax, ay) !== 0) continue
+          ctx.fillStyle = 'rgba(255, 0, 0, 0.45)'
+          ctx.fillRect(ax * mt, ay * mt, mt, mt)
+        }
+      }
     }
 
     for (let i in Game.enemies) {
       let enemy = Game.enemies[i]
       let rx = (enemy.x * mt) + mt / 8
       let ry = (enemy.y * mt) + mt / 8
-      ctx.fillStyle = '#f00'
+      ctx.fillStyle = enemy.icon
       ctx.fillRect(rx, ry, 16, 16)
 
       // health bars
@@ -435,16 +538,20 @@ window.onload = function () {
       ctx.fillRect(tower.x * mt + mt / 16, tower.y * mt + mt / 16, 8, 8)
     }
 
-    // tower range visualization
+    // tower placement
     if (Game.state === 2 && Game.tower && mX < Maps.width && mY < Maps.height) {
+      // tower range visualization
       let towerData = Towers[Game.tower]
-      ctx.strokeStyle = '#ddd'
-      ctx.fillStyle = 'rgba(200, 200, 200, 0.25)'
-      ctx.beginPath()
-      ctx.arc(mX * mt + mt / 2, mY * mt + mt / 2, towerData.range * mt, 0, 2 * Math.PI)
-      ctx.stroke()
-      ctx.fill()
-      ctx.closePath()
+      if (towerData.cost <= Game.money && canPlaceTowerAt (mX, mY)) {
+        let towerData = Towers[Game.tower]
+        ctx.strokeStyle = '#ddd'
+        ctx.fillStyle = 'rgba(200, 200, 200, 0.25)'
+        ctx.beginPath()
+        ctx.arc(mX * mt + mt / 2, mY * mt + mt / 2, towerData.range * mt, 0, 2 * Math.PI)
+        ctx.stroke()
+        ctx.fill()
+        ctx.closePath()
+      }
     }
 
     ctx.fillStyle = '#996633'
