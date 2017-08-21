@@ -33,7 +33,8 @@ window.onload = function () {
     pace: 1,
     wave: 0,
     waveTimer: 0,
-    tower: 'simple'
+    tower: 'simple',
+    sellRatio: .8
   }
 
   /**
@@ -533,6 +534,16 @@ window.onload = function () {
     }, tower))
   }
 
+  function sellTower (x, y) {
+    var tower = getTowerAt(x, y)
+    if(tower) {
+      Game.money += tower.cost * Game.sellRatio
+      return Game.towers.splice(Game.towers.indexOf(tower), 1)
+    }else{
+      return null
+    }
+  }
+
   function update (dt) {
     fpsCount++
     fpsCount %= 20
@@ -728,6 +739,13 @@ window.onload = function () {
     }
 
     clickBtn()
+  })
+  
+  canvas.addEventListener('contextmenu', (e) => {
+    if (Game.state === 2 && mX < Maps.width && mY < Maps.height &&
+      sellTower(mX, mY)) {
+      e.preventDefault()
+    }
   })
 
   canvas.addEventListener('mousemove', (e) => {
