@@ -73,13 +73,34 @@ window.onload = function () {
 
   let Towers = {
     simple: {
-      range: 6, // range in tiles
+      range: 5, // range in tiles
       damage: 15, // damage to deal to enemies when hit
       rate: 20, // rate of fire, higher - slower
       name: 'Simple', // name of the tower
+      description: 'Basic tower',
       speed: 30, // bullet speed, higher - faster
       cost: 50, // cost to place
       icon: '#333' // currently color
+    },
+    rapid: {
+      range: 3,
+      damage: 5,
+      rate: 5,
+      name: 'Rapid',
+      description: 'Rapid-firing tower',
+      speed: 30,
+      cost: 250,
+      icon: '#303'
+    },
+    snipe: {
+      range: 5,
+      damage: 150,
+      rate: 100,
+      name: 'Sniper',
+      description: 'Slow but powerful shots',
+      speed: 50,
+      cost: 500,
+      icon: '#4f3'
     }
   }
 
@@ -128,24 +149,43 @@ window.onload = function () {
     }
   }
 
-  let Buttons = {}
+  let Components = {}
 
-  let ButtonComponent = function (text, textColor, color, x, y, w, h, fn) {
-    this.x = x
-    this.y = y
-    this.w = w
-    this.h = h
-    this.disabled = false
-    this.hovered = false
-    this.draw = () => {
-      ctx.fillStyle = color
+  class Component {
+    constructor (x, y) {
+      this.x = x
+      this.y = y
+    }
+
+    draw () {}
+    update() {}
+  }
+
+  class ButtonComponent extends Component {
+    constructor (text, textColor, color, x, y, w, h, fn) {
+      super(x, y)
+      this.w = w
+      this.h = h
+      this.fn = () => {
+        fn.apply(this, [])
+      }
+      this.text = text
+      this.textColor = textColor
+      this.color = color
+      this.disabled = false
+      this.hovered = false
+    }
+    
+    draw () {
+      if (this.font) ctx.font = this.font
+      ctx.fillStyle = this.color
       ctx.fillRect(this.x, this.y, this.w, this.h)
-      ctx.fillStyle = textColor
-      let txtMeasure = ctx.measureText(text)
+      ctx.fillStyle = this.textColor
+      let txtMeasure = ctx.measureText(this.text)
       let tx = this.x + (this.w / 2 - txtMeasure.width / 2)
       let ty = this.y + (this.h / 2) * 1.2
 
-      ctx.fillText(text, tx, ty)
+      ctx.fillText(this.text, tx, ty)
 
       if (this.disabled) {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
@@ -156,21 +196,75 @@ window.onload = function () {
       }
     }
 
-    this.fn = () => {
-      if (fn != null && typeof fn === 'function') {
-        fn.apply(this, [])
-      }
-    }
-
-    this.setDisabled = (disable) => {
+    setDisabled (disable) {
       this.disabled = typeof disabled === 'boolean' ? disabled : !this.disabled
     }
   }
 
+  class TowerButton extends ButtonComponent {
+    constructor (tower, i) {
+      super()
+      this.active = false
+      this.w = 50
+      this.h = 50
+      this.x = (Maps.width * Maps.tile) + (i % 4) * (this.w + 4) + 4
+      this.y = 80 + Math.floor(i / 4) * (this.h + 4)
+      this.tower = tower
+      this.towerObj = Towers[this.tower]
+      this.costText = '$' + this.towerObj.cost
+      this.text = this.towerObj.name
+      this.textColor = '#fff'
+      this.color = '#995522'
+      this.fn = this.select
+      this.font = '14px Helvetica'
+    }
+
+    select () {
+      Game.tower = this.tower
+    }
+
+    draw () {
+      if (this.active) {
+        ctx.fillStyle = '#afa'
+        ctx.fillRect(this.x - 2, this.y - 2, this.w + 4, this.h + 4)
+      }
+      
+      ctx.font = '14px Helvetica'
+      ctx.fillStyle = this.color
+      ctx.fillRect(this.x, this.y, this.w, this.h)
+      ctx.fillStyle = this.textColor
+      let txtMeasure = ctx.measureText(this.text)
+      let tx = this.x + (this.w / 2 - txtMeasure.width / 2)
+      let ty = this.y + (this.h / 2) * 1
+
+      ctx.fillText(this.text, tx, ty)
+
+      ctx.font = '10px Helvetica'
+      if (Game.money >= this.towerObj.cost) {
+        ctx.fillStyle = '#0f0'
+      } else {
+        ctx.fillStyle = '#f11'
+      }
+      txtMeasure = ctx.measureText(this.costText)
+      tx = this.x + (this.w / 2 - txtMeasure.width / 2)
+      ty = this.y + (this.h / 2) * 1.6
+      ctx.fillText(this.costText, tx, ty)
+
+      if (this.disabled) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
+        ctx.fillRect(this.x, this.y, this.w, this.h)
+      } else if (this.hovered) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.25)'
+        ctx.fillRect(this.x, this.y, this.w, this.h)
+      }
+    }
+  }
+
   function clickBtn () {
-    for (let i in Buttons) {
-      let btn = Buttons[i]
-      if (btn.disabled) return
+    for (let i in Components) {
+      let btn = Components[i]
+      if (!(btn instanceof ButtonComponent)) continue
+      if (btn.disabled) continue
       if (mXr > btn.x && mYr > btn.y && mXr < btn.x + btn.w && mYr < btn.y + btn.h) {
         btn.fn()
       }
@@ -235,7 +329,7 @@ window.onload = function () {
       Game.state = gst
     }
 
-    Buttons.wave.disabled = (Game.state !== 2)
+    Components.wave.disabled = (Game.state !== 2)
   }
 
   function updateEnemyMovements () {
@@ -353,21 +447,28 @@ window.onload = function () {
     }
   }
 
+  // Total enemy spawn count is used to determine that the round is over
+  // Local (in-function) determines how many there are left to spawn as ordered by the function call
   function addEnemies (cnt, type) {
-    Game.enemySpawn += cnt
+    Game.enemySpawn += cnt // Total amount of enemies to spawn
+    let enemies = cnt // Local amount of enemies to spawn
 
     let path = Game.map.pathgen[0]
+    // Copy the enemy and add x and y coordinates
     let enemyCopy = Object.assign({
       x: path.x,
       y: path.y
     }, type)
 
+    // Modify the enemy according to wave settings
     enemyCopy = waveEnemyModifer(enemyCopy, Game.wave)
     enemyCopy.dmg = enemyCopy.health
 
+    // Copy the enemy at an interval and spawn it
     let ect = setInterval(() => {
-      if (Game.enemySpawn === 0) return clearInterval(ect)
-      Game.enemySpawn--
+      if (enemies === 0) return clearInterval(ect)
+      Game.enemySpawn-- // Reduce total spawn count
+      enemies-- // Reduce local spawn count
 
       Game.enemies.push(Object.assign({}, enemyCopy))
     }, enemyCopy.frequency)
@@ -443,12 +544,19 @@ window.onload = function () {
     updateEnemyMovements()
     tickParticles()
 
-    for (let i in Buttons) {
-      let btn = Buttons[i]
-      if (mXr > btn.x && mYr > btn.y && mXr < btn.x + btn.w && mYr < btn.y + btn.h) {
-        btn.hovered = true
-      } else if (btn.hovered) {
-        btn.hovered = false
+    for (let i in Components) {
+      let btn = Components[i]
+      if (btn instanceof ButtonComponent) {
+        if (mXr > btn.x && mYr > btn.y && mXr < btn.x + btn.w && mYr < btn.y + btn.h) {
+          btn.hovered = true
+        } else if (btn.hovered) {
+          btn.hovered = false
+        }
+
+        if (btn instanceof TowerButton) {
+          btn.disabled = btn.towerObj.cost > Game.money
+          btn.active = Game.tower === i
+        }
       }
     }
 
@@ -564,8 +672,8 @@ window.onload = function () {
     ctx.fillText('Health: ' + Game.health, 645, 45)
     ctx.fillText('Money: ' + Game.money, 645, 65)
 
-    for (let i in Buttons) {
-      let btn = Buttons[i]
+    for (let i in Components) {
+      let btn = Components[i]
       btn.draw()
     }
 
@@ -598,9 +706,15 @@ window.onload = function () {
   function initialize () {
     Game.map = Maps.first
 
-    Buttons.wave = new ButtonComponent('Next Wave', '#fff', '#11f', 650, 570, 200, 60, () => {
+    Components.wave = new ButtonComponent('Next Wave', '#fff', '#11f', 650, 570, 200, 60, () => {
       updateGameState(1)
     })
+
+    let index = 0
+    for (let i in Towers) {
+      Components[i] = new TowerButton(i, index)
+      index++
+    }
 
     gameLoop()
   }
