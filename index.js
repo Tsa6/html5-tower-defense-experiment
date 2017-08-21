@@ -690,17 +690,20 @@ window.onload = function () {
   }
 
   let lastTime = Date.now()
+  let now
+  let fpsRes = 50
+
   function gameLoop () {
-    requestAnimationFrame(gameLoop)
-
-    let delta = (Date.now() - lastTime) / 1000
-
-    fps = 1 / (delta === 0 ? 1 : delta)
-
-    update(delta)
+    update()
     render()
 
-    lastTime = Date.now()
+    let cfps = 1000 / ((now = new Date) - lastTime)
+    if (now != lastTime) {
+      fps += (cfps - fps) / fpsRes
+      lastTime = now
+    }
+
+    requestAnimationFrame(gameLoop)
   }
 
   function initialize () {
