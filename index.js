@@ -146,6 +146,114 @@ window.onload = function () {
         {x: 1, y: 12, end: false},
         {x: 1, y: 17, end: true},
       ]
+    },
+    generate: function(targetLength) {
+      //Initialize variables
+      cursor = {x: 1, y:2, end: false}
+      totalLength = 0
+      targetLength = targetLength || 66
+      var pathgen = [Object.assign({}, cursor)]
+      var tiles = []
+      for(var i = 0; i < this.height; i++) {
+	      var row = Array(this.width)
+	      row.fill(0)
+	      tiles.push(row)
+      }
+
+      //Checks if a certain point is a valid next point for pathgen
+      //Requirements:
+      //  No direct line shorter than three spaces to the nearest path
+      //  Not within 1 tile of the border
+      function checkValidNode(point, map) {
+        if(point.x > 0 && point.x < map.width - 1 && point.y > 0 && point.y < map.height - 1) {
+          for(var x = Math.max(point.x - 3, 0); x <= Math.min(map.width-1, point.x + 3); x++) {
+            if(tiles[point.y][x]) {
+              return false;
+            }
+          }
+          for(var y = Math.max(point.y - 3, 0); y <= Math.min(map.height-1, point.y + 3); y++) {
+            if(tiles[y][point.x]) {
+              return false;
+            }
+          }
+          return true
+        }else{
+          return false
+        }
+      }
+
+      //Add populate map with nodes to the path
+      while(totalLength < targetLength) {
+        
+        //Determine tiles available for expansion by checking each direction
+        directions = [
+          {dx:  1, dy:  0},
+          {dx: -1, dy:  0},
+          {dx:  0, dy:  1},
+          {dx:  0, dy: -1},
+        ]
+        distances = Array(directions.length)
+        distances.fill(3)
+        for(var d = 0; d < directions.length; d++) {
+          while(checkValidNode({
+            x: cursor.x + directions[d].dx * (distances[d] + 1),
+            y: cursor.y + directions[d].dy * (distances[d] + 1)
+          }, this)){
+            distances[d]++
+          }
+          if(!checkValidNode({
+            x: cursor.x + directions[d].dx * distances[d],
+            y: cursor.y + directions[d].dy * distances[d]
+          },this)) {
+            directions.splice(d, 1)
+            distances.splice(d--, 1)
+          }
+        }
+
+        //Pick a valid tile at random
+        if(directions.length == 0) {
+          return this.generate(); //If stuck, start over
+        }
+        d = Math.floor(directions.length * Math.random())
+        direction = directions[d]
+        distance = distances[d]
+        amt = Math.floor(Math.random() * (distance - 3)) + 3
+        tile = {
+          x: cursor.x + direction.dx * amt,
+          y: cursor.y + direction.dy * amt,
+          end: false
+        }
+
+        //Load tile
+        for(var i = 0; i < amt; i++) {
+          tiles[cursor.y][cursor.x] = 1
+          totalLength++
+          cursor.x += direction.dx
+          cursor.y += direction.dy
+        }
+        pathgen.push(tile)
+      }
+
+      //Set the first and last nodes to special values
+      first = pathgen[0]
+      last = pathgen[pathgen.length-1]
+      tiles[first.y][first.x] = 2
+      tiles[last.y][last.x] = 3
+      last.end = true
+
+      //Debug and flatten array
+      tiles_out = []
+      console.log('Tiles:  ')
+      for(var i = 0; i < tiles.length; i++) {
+        console.log(tiles[i].join(' ') + '    /' + i)
+        tiles_out = tiles_out.concat(tiles[i])
+      }
+      console.log('Pathgen:  ')
+      console.log(pathgen)
+      console.log('Length:  ',totalLength)
+
+      //Return
+      return {tiles:tiles_out, pathgen:pathgen}
     }
   }
 
@@ -711,7 +819,7 @@ window.onload = function () {
   }
 
   function initialize () {
-    Game.map = Maps.first
+    Game.map = Maps.generate()
 
     Components.wave = new ButtonComponent('Next Wave', '#fff', '#11f', 650, 570, 200, 60, () => {
       updateGameState(1)
