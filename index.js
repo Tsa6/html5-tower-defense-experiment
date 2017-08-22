@@ -109,7 +109,7 @@ window.onload = function () {
       description: 'Slow down enemies by damage',
       speed: 50,
       cost: 500,
-      icon: '#4f3',
+      icon: '#e27c06',
       bullet: 2
     },
     snipe: {
