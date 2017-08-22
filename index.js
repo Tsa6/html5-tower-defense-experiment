@@ -602,6 +602,11 @@ window.onload = function () {
       if(draw_tile) {
         ctx.fillRect(x * mt, y * mt, mt, mt)
       }
+
+      if(Game.state == 2 && tile == 0 && !getTowerAt(x, y) && !canPlaceTowerAt(x, y)) {
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.45)'
+        ctx.fillRect(x * mt, y * mt, mt, mt)
+      }
     }
 /*
     for (let i in Game.map.pathgen) {
