@@ -35,6 +35,7 @@ window.onload = function () {
     wave: 0,
     waveTimer: 0,
     tower: 'simple',
+    towerSel: null,
     sellRatio: .8
   }
 
@@ -155,6 +156,7 @@ window.onload = function () {
 
   class Component {
     constructor (x, y) {
+      this.visible = true
       this.x = x
       this.y = y
     }
@@ -179,6 +181,7 @@ window.onload = function () {
     }
     
     draw () {
+      if (!this.visible) return
       if (this.font) ctx.font = this.font
       ctx.fillStyle = this.color
       ctx.fillRect(this.x, this.y, this.w, this.h)
@@ -226,6 +229,7 @@ window.onload = function () {
     }
 
     draw () {
+      if (!this.visible) return
       if (this.active) {
         ctx.fillStyle = '#afa'
         ctx.fillRect(this.x - 2, this.y - 2, this.w + 4, this.h + 4)
@@ -263,14 +267,17 @@ window.onload = function () {
   }
 
   function clickBtn () {
+    let click = false
     for (let i in Components) {
       let btn = Components[i]
       if (!(btn instanceof ButtonComponent)) continue
-      if (btn.disabled) continue
+      if (btn.disabled || !btn.visible) continue
       if (mXr > btn.x && mYr > btn.y && mXr < btn.x + btn.w && mYr < btn.y + btn.h) {
         btn.fn()
+        click = true
       }
     }
+    return click
   }
 
   // Use this function to spawn enemies depending on round
@@ -394,12 +401,14 @@ window.onload = function () {
     Game.particles.push({
       x: tower.x,
       y: tower.y,
+      tower: {x: tower.x, y: tower.y},
       velX: (target.x - tower.x) / target.dist * 1.24,
       velY: (target.y - tower.y) / target.dist * 1.24,
       dmg: tower.damage,
       speed: tower.speed,
       life: 100
     })
+    tower.fires++
   }
 
   function tickTowers () {
@@ -440,6 +449,11 @@ window.onload = function () {
           if (enemy.dmg <= 0) {
             Game.enemies.splice(j, 1)
             Game.money += 10
+
+            let tower = getTowerAt(parti.tower.x, parti.tower.y)
+            if (tower) {
+              tower.killcount++
+            }
           }
 
           // remove particle
@@ -449,6 +463,8 @@ window.onload = function () {
     }
   }
 
+  // Render text telling the amount of money received when selling a tower
+  // Disappears after 30 game ticks
   function tickSellText () {
     for (let i in Game.selltext) {
       let txt = Game.selltext[i]
@@ -456,10 +472,16 @@ window.onload = function () {
       txt.tick %= 30
       if (txt.tick === 0) {
         Game.selltext.splice(i, 1)
+        continue
       }
 
       txt.y -= 0.05
     }
+  }
+
+  function selectTower (x, y) {
+    let tower = getTowerAt(x, y)
+    Game.towerSel = tower
   }
 
   // Total enemy spawn count is used to determine that the round is over
@@ -544,12 +566,14 @@ window.onload = function () {
       x: x,
       y: y,
       tick: tower.rate,
-      setting: 1
+      setting: 1,
+      fires: 0,
+      killcount: 0
     }, tower))
   }
 
   function sellTower (x, y) {
-    var tower = getTowerAt(x, y)
+    let tower = getTowerAt(x, y)
     if(tower) {
       let amount = tower.cost * Game.sellRatio
       Game.money += amount
@@ -559,6 +583,11 @@ window.onload = function () {
         amount: amount,
         tick: 0
       })
+
+      if (Game.towerSel && Game.towerSel.x === x && Game.towerSel.y === y) {
+        Game.towerSel = null
+      }
+
       return Game.towers.splice(Game.towers.indexOf(tower), 1)
     }else{
       return null
@@ -597,6 +626,8 @@ window.onload = function () {
     if (Game.state === 1) {
       Game.waveTimer++
     }
+
+    Components.sell.visible = Game.towerSel !== null
   }
 
   function render () {
@@ -609,7 +640,7 @@ window.onload = function () {
       let index = parseInt(i)
       let y = Math.floor(index / Maps.width)
       let x = Math.floor(index % Maps.height)
-      var draw_tile = true
+      let draw_tile = true
      
       if (tile === 1) {
         ctx.fillStyle = '#fdd'
@@ -666,20 +697,31 @@ window.onload = function () {
       ctx.fillRect(tower.x * mt + mt / 16, tower.y * mt + mt / 16, 8, 8)
     }
 
-    // tower placement
-    if (Game.state === 2 && Game.tower && mX < Maps.width && mY < Maps.height) {
-      // tower range visualization
-      let towerData = Towers[Game.tower]
-      if (towerData.cost <= Game.money && canPlaceTowerAt (mX, mY)) {
-        let towerData = Towers[Game.tower]
-        ctx.strokeStyle = '#ddd'
-        ctx.fillStyle = 'rgba(200, 200, 200, 0.25)'
-        ctx.beginPath()
-        ctx.arc(mX * mt + mt / 2, mY * mt + mt / 2, towerData.range * mt, 0, 2 * Math.PI)
-        ctx.stroke()
-        ctx.fill()
-        ctx.closePath()
-      }
+    // tower range visualization
+    let towerData = Towers[Game.tower]
+    let vX = null
+    let vY = null
+
+    // Render the currently selected tower's range if present
+    if (Game.towerSel) {
+      towerData = Game.towerSel
+      vX = towerData.x
+      vY = towerData.y
+    } else if (towerData != null && towerData.cost <= Game.money && canPlaceTowerAt (mX, mY) &&
+        mX < Maps.width && mY < Maps.height && Game.state === 2) {
+      vX = mX
+      vY = mY
+    }
+
+    // Render range
+    if (vX != null && vY != null && towerData) {
+      ctx.strokeStyle = '#ddd'
+      ctx.fillStyle = 'rgba(200, 200, 200, 0.25)'
+      ctx.beginPath()
+      ctx.arc(vX * mt + mt / 2, vY * mt + mt / 2, towerData.range * mt, 0, 2 * Math.PI)
+      ctx.stroke()
+      ctx.fill()
+      ctx.closePath()
     }
 
     for (let i in Game.selltext) {
@@ -699,11 +741,6 @@ window.onload = function () {
     ctx.fillText('Health: ' + Game.health, 645, 45)
     ctx.fillText('Money: ' + Game.money, 645, 65)
 
-    for (let i in Components) {
-      let btn = Components[i]
-      btn.draw()
-    }
-
     if (Game.state === -1) {
       ctx.font = '80px Helvetica'
       ctx.fillStyle = '#f00'
@@ -713,6 +750,34 @@ window.onload = function () {
     if (mX < Maps.width && mY < Maps.height) {
       ctx.fillStyle = 'rgba(255, 0, 0, 0.24)'
       ctx.fillRect(mX * mt, mY * mt, mt, mt)
+    }
+
+    // Render a selection information box
+    // TODO: component
+    if (Game.towerSel) {
+      let by = (Maps.height - 5) * Maps.tile
+      let ts = Game.towerSel
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
+      ctx.fillRect(0, by, Maps.width * Maps.tile, 5 * Maps.tile)
+      
+      ctx.fillStyle = '#fff'
+      ctx.font = '25px Helvetica'
+      ctx.fillText(ts.name + ' Tower', 5, by + 25)
+
+      ctx.font = '15px Helvetica'
+      ctx.fillText(ts.description, 5, by + 42)
+
+      ctx.fillText('Range: ' + ts.range + ' tiles', 5, by + 70)
+      ctx.fillText('Damage: ' + ts.damage + ' HP', 5, by + 85)
+      ctx.fillText('Fire Rate: ' + ts.rate, 5, by + 100)
+      ctx.fillText('Kills: ' + ts.killcount, 5, by + 115)
+      ctx.fillText('Fired ' + ts.fires + ' times', 5, by + 130)
+    }
+
+    for (let i in Components) {
+      let btn = Components[i]
+      btn.draw()
     }
   }
 
@@ -736,8 +801,16 @@ window.onload = function () {
   function initialize () {
     Game.map = Maps.first
 
+    // Next wave button
     Components.wave = new ButtonComponent('Next Wave', '#fff', '#11f', 650, 570, 200, 60, () => {
       updateGameState(1)
+    })
+
+    // Tower sell button
+    Components.sell = new ButtonComponent('Sell Tower', '#fff', '#f11', 490, 590, 140, 40, () => {
+      if (Game.towerSel) {
+        sellTower(Game.towerSel.x, Game.towerSel.y)
+      }
     })
 
     let index = 0
@@ -750,11 +823,20 @@ window.onload = function () {
   }
 
   canvas.addEventListener('click', (e) => {
-    if (Game.state === 2 && mX < Maps.width && mY < Maps.height && Game.tower) {
+    if (clickBtn()) return
+    if (mX < Maps.width && mY < Maps.height) {
+      // Select a tower if present
+      if (getTowerAt(mX, mY)) {
+        return selectTower(mX, mY)
+      } else if (Game.towerSel) {
+        Game.towerSel = null
+        return
+      }
+
+      // Place a tower
+      if (!Game.tower || Game.state !== 2) return
       placeTower(Towers[Game.tower], mX, mY)
     }
-
-    clickBtn()
   })
   
   canvas.addEventListener('contextmenu', (e) => {
