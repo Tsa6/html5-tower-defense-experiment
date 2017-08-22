@@ -1033,11 +1033,13 @@ window.onload = function () {
 
     // Draw enemies
     for (let i in Game.enemies) {
+      let margin = .25 //A ratio of the width of a tile.  .25 margins with 32 px tiles leave a 8 px margin on all sides, with the body being 16px x 16px
       let enemy = Game.enemies[i]
-      let rx = (enemy.x * mt) + mt / 8
-      let ry = (enemy.y * mt) + mt / 8
+      let rx = (enemy.x + mt) + mt * margin
+      let ry = (enemy.y * mt) + mt * margin
+      let w = mt - (mt * margin * 2)
       ctx.fillStyle = enemy.icon
-      ctx.fillRect(rx, ry, 16, 16)
+      ctx.fillRect(rx, ry, w, w)
 
       // health bars
       let hx = rx - 6
