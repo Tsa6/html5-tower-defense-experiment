@@ -26,6 +26,7 @@ window.onload = function () {
     enemies: [],
     towers: [],
     particles: [],
+    selltext: [],
     map: null,
     health: 100,
     money: 100,
@@ -448,6 +449,19 @@ window.onload = function () {
     }
   }
 
+  function tickSellText () {
+    for (let i in Game.selltext) {
+      let txt = Game.selltext[i]
+      txt.tick++
+      txt.tick %= 30
+      if (txt.tick === 0) {
+        Game.selltext.splice(i, 1)
+      }
+
+      txt.y -= 0.05
+    }
+  }
+
   // Total enemy spawn count is used to determine that the round is over
   // Local (in-function) determines how many there are left to spawn as ordered by the function call
   function addEnemies (cnt, type) {
@@ -537,7 +551,14 @@ window.onload = function () {
   function sellTower (x, y) {
     var tower = getTowerAt(x, y)
     if(tower) {
-      Game.money += tower.cost * Game.sellRatio
+      let amount = tower.cost * Game.sellRatio
+      Game.money += amount
+      Game.selltext.push({
+        x: x,
+        y: y,
+        amount: amount,
+        tick: 0
+      })
       return Game.towers.splice(Game.towers.indexOf(tower), 1)
     }else{
       return null
@@ -554,6 +575,7 @@ window.onload = function () {
     tickTowers()
     updateEnemyMovements()
     tickParticles()
+    tickSellText()
 
     for (let i in Components) {
       let btn = Components[i]
@@ -658,6 +680,13 @@ window.onload = function () {
         ctx.fill()
         ctx.closePath()
       }
+    }
+
+    for (let i in Game.selltext) {
+      let txt = Game.selltext[i]
+      ctx.font = '12px Helvetica'
+      ctx.fillStyle = '#0f0'
+      ctx.fillText('+ $' + txt.amount, txt.x * mt, txt.y * mt)
     }
 
     ctx.fillStyle = '#996633'
