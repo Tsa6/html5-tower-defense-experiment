@@ -685,7 +685,7 @@ window.onload = function () {
     for (let i in Game.selltext) {
       let txt = Game.selltext[i]
       ctx.font = '12px Helvetica'
-      ctx.fillStyle = '#0f0'
+      ctx.fillStyle = '#0a0'
       ctx.fillText('+ $' + txt.amount, txt.x * mt, txt.y * mt)
     }
 
