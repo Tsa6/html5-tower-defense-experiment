@@ -341,7 +341,8 @@ window.onload = function () {
       console.log('Length:  ',totalLength)
 
       //Return
-      return {tiles:tiles_out, pathgen:pathgen}
+      //Note:  Currently inherits waves from the first map
+      return {tiles:tiles_out, pathgen:pathgen, waves:Maps.first.waves}
     }
   }
 
