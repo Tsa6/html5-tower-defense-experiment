@@ -6,6 +6,9 @@ window.onload = function () {
       * I use Object.assign to copy objects in order to eliminate references when spawning enemies
         and to get the ability to modify them individually
       * Components such as buttons or selections within the canvas are classes
+      * if, function and else have spaces between both '(' and '{'
+        `if (thing) {}` not `if(thing){}`
+      * Keep all variables local to their scope (in other words, use `let` instead of `var`)
   */
 
   let canvas = document.getElementById('canvas')
@@ -26,6 +29,7 @@ window.onload = function () {
     enemies: [],
     towers: [],
     particles: [],
+    selltext: [],
     map: null,
     health: 100,
     money: 100,
@@ -34,6 +38,8 @@ window.onload = function () {
     wave: 0,
     waveTimer: 0,
     tower: 'simple',
+    towerSel: null,
+    debug: false,
     sellRatio: .8
   }
 
@@ -65,7 +71,7 @@ window.onload = function () {
     tough: {
       speed: 5,
       node: 1,
-      health: 100,
+      health: 150,
       reward: 20,
       frequency: 1000,
       icon: '#f40'
@@ -78,30 +84,44 @@ window.onload = function () {
       damage: 15, // damage to deal to enemies when hit
       rate: 20, // rate of fire, higher - slower
       name: 'Simple', // name of the tower
-      description: 'Basic tower',
+      description: 'Medium rate and damage',
       speed: 30, // bullet speed, higher - faster
       cost: 50, // cost to place
-      icon: '#333' // currently color
+      icon: '#333', // currently color
+      bullet: 1 // The type of bullet. 1: damage, 2: slow down by damage, 3: instant kill
     },
     rapid: {
       range: 3,
       damage: 5,
       rate: 5,
       name: 'Rapid',
-      description: 'Rapid-firing tower',
+      description: 'Rapid-firing but low damage',
       speed: 30,
       cost: 250,
-      icon: '#303'
+      icon: '#303',
+      bullet: 1
     },
-    snipe: {
-      range: 5,
-      damage: 150,
-      rate: 100,
-      name: 'Sniper',
-      description: 'Slow but powerful shots',
+    sticky: {
+      range: 3,
+      damage: 10,
+      rate: 30,
+      name: 'Sticky',
+      description: 'Slow down enemies by damage',
       speed: 50,
       cost: 500,
-      icon: '#4f3'
+      icon: '#e27c06',
+      bullet: 2
+    },
+    snipe: {
+      range: 10,
+      damage: 1500,
+      rate: 100,
+      name: 'Sniper',
+      description: 'Slow firing but always kills',
+      speed: 50,
+      cost: 1000,
+      icon: '#4f3',
+      bullet: 1
     }
   }
 
@@ -262,12 +282,115 @@ window.onload = function () {
 
   class Component {
     constructor (x, y) {
+      this.visible = true
+      this.elements = []
       this.x = x
       this.y = y
     }
 
-    draw () {}
-    update() {}
+    elDraw() {
+      for (let i in this.elements) {
+        let elem = this.elements[i]
+        if (elem instanceof Component) {
+          elem.draw()
+        }
+      }
+    }
+
+    elUpdate() {
+      for (let i in this.elements) {
+        let elem = this.elements[i]
+        if (elem instanceof Component) {
+          elem.update()
+        }
+      }
+    }
+
+    addElement (el) {
+      if (!(el instanceof Component)) return
+      this.elements.push(el)
+    }
+
+    draw () {
+      this.elDraw()
+    }
+
+    update() {
+      this.elUpdate()
+    }
+  }
+
+  class Tooltip extends Component {
+    constructor () {
+      super(0, 0)
+      this.font = '20px Helvetica'
+      this.text = ''
+      this.w = 0
+      this.h = 24
+      this.components = []
+      this.visible = false
+    }
+
+    static assign (tooltip, component, text) {
+      tooltip.addComponent(component, text)
+    }
+
+    setText (str) {
+      if (this.text === str) return
+      this.text = str
+      if (this.font) ctx.font = this.font
+      this.w = ctx.measureText(this.text).width + this.h
+    }
+
+    draw () {
+      if (!this.visible) return
+      if (this.text === '') return
+      if (this.font) ctx.font = this.font
+
+      let aX = this.x
+      let aY = this.y
+
+      if (aX + this.w > canvas.width) {
+        aX -= this.w + 5
+      }
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
+      ctx.fillRect(aX, aY, this.w, this.h)
+
+      ctx.fillStyle = '#000'
+      ctx.fillText(this.text, aX + this.h / 2, aY + this.h / 2 + 5)
+    }
+
+    setPosition (x, y) {
+      this.x = x
+      this.y = y
+    }
+
+    update () {
+      if (this.components.length) {
+        let cmps = false
+        for (let i in this.components) {
+          let cmp = this.components[i]
+          if (mXr > cmp.x && mYr > cmp.y && 
+              mXr < cmp.x + cmp.w && mYr < cmp.y + cmp.h) {
+            this.setPosition(mXr, mYr)
+            this.setText(cmp.text)
+            cmps = true
+          }
+        }
+        this.visible = cmps
+      }
+    }
+
+    addComponent (component, text) {
+      this.components.push({
+        x: component.x,
+        y: component.y,
+        w: component.w,
+        h: component.h,
+        text: text
+      })
+    }
   }
 
   class ButtonComponent extends Component {
@@ -283,9 +406,11 @@ window.onload = function () {
       this.color = color
       this.disabled = false
       this.hovered = false
+      this.font = '20px Helvetica'
     }
     
     draw () {
+      if (!this.visible) return
       if (this.font) ctx.font = this.font
       ctx.fillStyle = this.color
       ctx.fillRect(this.x, this.y, this.w, this.h)
@@ -300,8 +425,18 @@ window.onload = function () {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
         ctx.fillRect(this.x, this.y, this.w, this.h)
       } else if (this.hovered) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.25)'
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'
         ctx.fillRect(this.x, this.y, this.w, this.h)
+      }
+      this.elDraw()
+    }
+
+    update () {
+      if (!this.visible || this.disabled) return
+      if (mXr > this.x && mYr > this.y && mXr < this.x + this.w && mYr < this.y + this.h) {
+        this.hovered = true
+      } else if (this.hovered) {
+        this.hovered = false
       }
     }
 
@@ -325,14 +460,25 @@ window.onload = function () {
       this.textColor = '#fff'
       this.color = '#995522'
       this.fn = this.select
-      this.font = '14px Helvetica'
     }
 
     select () {
       Game.tower = this.tower
     }
 
+    addTooltip () {
+      Tooltip.assign(Components.tooltip, this, this.towerObj.description)
+    }
+
+    update () {
+      super.update()
+      this.disabled = this.towerObj.cost > Game.money
+      this.active = Game.tower === this.tower
+      this.elUpdate()
+    }
+
     draw () {
+      if (!this.visible) return
       if (this.active) {
         ctx.fillStyle = '#afa'
         ctx.fillRect(this.x - 2, this.y - 2, this.w + 4, this.h + 4)
@@ -363,19 +509,109 @@ window.onload = function () {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
         ctx.fillRect(this.x, this.y, this.w, this.h)
       } else if (this.hovered) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.25)'
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'
         ctx.fillRect(this.x, this.y, this.w, this.h)
       }
+      this.elDraw()
     }
   }
 
-  function clickBtn () {
-    for (let i in Components) {
-      let btn = Components[i]
-      if (!(btn instanceof ButtonComponent)) continue
-      if (btn.disabled) continue
-      if (mXr > btn.x && mYr > btn.y && mXr < btn.x + btn.w && mYr < btn.y + btn.h) {
-        btn.fn()
+  class InfoDialog extends Component {
+    constructor () {
+      super()
+      this.x = 0
+      this.y = (Maps.height - 5) * Maps.tile
+      this.w = Maps.width * Maps.tile
+      this.h = 5 * Maps.tile
+      this.createButton()
+    }
+
+    createButton () {
+      let btn = new ButtonComponent('Sell Tower', '#fff', '#f11', 490, 590, 140, 40, () => {
+        if (Game.towerSel) {
+          sellTower(Game.towerSel.x, Game.towerSel.y)
+        }
+      })
+
+      btn.update = function () {
+        this.visible = Game.towerSel !== null
+        if (!this.visible) return
+        if (mXr > this.x && mYr > this.y && mXr < this.x + this.w && mYr < this.y + this.h) {
+          this.hovered = true
+        } else if (this.hovered) {
+          this.hovered = false
+        }
+      }
+
+      this.addElement(btn)
+    }
+
+    draw () {
+      if (Game.towerSel) {
+        let ts = Game.towerSel
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
+        ctx.fillRect(this.x, this.y, this.w, this.h)
+        
+        ctx.fillStyle = '#fff'
+        ctx.font = '25px Helvetica'
+        ctx.fillText(ts.name + ' Tower', 5, this.y + 25)
+
+        ctx.font = '15px Helvetica'
+        ctx.fillText(ts.description, 5, this.y + 42)
+
+        ctx.fillText('Range: ' + ts.range + ' tiles', 5, this.y + 70)
+        ctx.fillText('Damage: ' + ts.damage + ' HP', 5, this.y + 85)
+        ctx.fillText('Fire Rate: ' + ts.rate, 5, this.y + 100)
+        ctx.fillText('Kills: ' + ts.killcount, 5, this.y + 115)
+        ctx.fillText('Fired ' + ts.fires + ' times', 5, this.y + 130)
+      }
+      this.elDraw()
+    }
+  }
+
+  function clickBtn (cmp) {
+    let click = false
+    let compList = cmp != null && cmp instanceof Component ? cmp.elements : null
+    if (cmp == null && compList == null) {
+      compList = Components
+    }
+
+    for (let i in compList) {
+      let btn = compList[i]
+
+      if (!(btn instanceof ButtonComponent)) {
+        // Loop through sub-components of components
+        if (btn.elements.length) {
+          click = clickBtn(btn)
+        } else {
+          continue
+        }
+      } else {
+        // Click the button if its in bounds, visible and not disabled
+        if (btn.disabled || !btn.visible) continue
+        if (mXr > btn.x && mYr > btn.y && mXr < btn.x + btn.w && mYr < btn.y + btn.h && btn) {
+          btn.fn()
+          click = true
+        }
+      }
+    }
+    return click
+  }
+
+  function updateComponents (cmp) {
+    // Determine which object of components to update
+    let compList = cmp != null && cmp instanceof Component ? cmp.elements : null
+    if (cmp == null && compList == null) {
+      compList = Components
+    }
+
+    for (let i in compList) {
+      let component = compList[i]
+      component.update()
+
+      if (component.elements.length) {
+        updateComponents(component)
       }
     }
   }
@@ -402,7 +638,7 @@ window.onload = function () {
   // Use this function to modify the enemies spawned each round
   function waveEnemyModifer (enemy, round) {
     // Reduce the time between enemy spawns
-    let fr = enemy.frequency - 2 * round
+    let fr = enemy.frequency - 5 * round
     if (fr < 100) {
       fr = 100
     }
@@ -424,6 +660,7 @@ window.onload = function () {
     if (Game.state !== -1 && Game.health <= 0) {
       Game.health = 0
       Game.state = -1
+      Game.towerSel = null
     }
 
     if (Game.state === 2 && gst === 1) {
@@ -498,14 +735,18 @@ window.onload = function () {
       target = enemiesProxima[enemiesProxima.length - 1]
     }
 
+    tower.fires++
+
     Game.particles.push({
       x: tower.x,
       y: tower.y,
+      tower: {x: tower.x, y: tower.y},
       velX: (target.x - tower.x) / target.dist * 1.24,
       velY: (target.y - tower.y) / target.dist * 1.24,
       dmg: tower.damage,
       speed: tower.speed,
-      life: 100
+      type: tower.bullet || 1,
+      life: 30
     })
   }
 
@@ -542,11 +783,23 @@ window.onload = function () {
         if (parti.x >= enemy.x - 0.25 && parti.y >= enemy.y - 0.25 &&
           parti.x <= enemy.x + 0.5 && parti.y <= enemy.y + 0.5) {
           // damage enemy
-          enemy.dmg -= parti.dmg
+          if (parti.type === 1) {
+            enemy.dmg -= parti.dmg
 
-          if (enemy.dmg <= 0) {
-            Game.enemies.splice(j, 1)
-            Game.money += 10
+            if (enemy.dmg <= 0) {
+              Game.enemies.splice(j, 1)
+              Game.money += 10
+
+              let tower = getTowerAt(parti.tower.x, parti.tower.y)
+              if (tower) {
+                tower.killcount++
+              }
+            }
+          } else if (parti.type === 2) {
+            enemy.speed -= parti.dmg
+            if (enemy.speed < 2) {
+              enemy.speed = 2
+            }
           }
 
           // remove particle
@@ -554,6 +807,27 @@ window.onload = function () {
         }
       }
     }
+  }
+
+  // Render text telling the amount of money received when selling a tower
+  // Disappears after 30 game ticks
+  function tickSellText () {
+    for (let i in Game.selltext) {
+      let txt = Game.selltext[i]
+      txt.tick++
+      txt.tick %= 30
+      if (txt.tick === 0) {
+        Game.selltext.splice(i, 1)
+        continue
+      }
+
+      txt.y -= 0.05
+    }
+  }
+
+  function selectTower (x, y) {
+    let tower = getTowerAt(x, y)
+    Game.towerSel = tower
   }
 
   // Total enemy spawn count is used to determine that the round is over
@@ -638,48 +912,63 @@ window.onload = function () {
       x: x,
       y: y,
       tick: tower.rate,
-      setting: 1
+      setting: 1,
+      fires: 0,
+      killcount: 0
     }, tower))
   }
 
   function sellTower (x, y) {
-    var tower = getTowerAt(x, y)
-    if(tower) {
-      Game.money += tower.cost * Game.sellRatio
+    let tower = getTowerAt(x, y)
+    if (tower) {
+      let amount = tower.cost * Game.sellRatio
+      Game.money += amount
+      Game.selltext.push({
+        x: x,
+        y: y,
+        amount: amount,
+        tick: 0
+      })
+
+      if (Game.towerSel && Game.towerSel.x === x && Game.towerSel.y === y) {
+        Game.towerSel = null
+      }
+
       return Game.towers.splice(Game.towers.indexOf(tower), 1)
-    }else{
+    } else {
       return null
     }
   }
 
   function update (dt) {
+    // Update FPS count for drawing (Don't render a new number every frame, it changes too fast)
     fpsCount++
     fpsCount %= 20
     if (fpsCount === 0) {
       fpsDraw = fps
     }
     
-    tickTowers()
-    updateEnemyMovements()
-    tickParticles()
-
-    for (let i in Components) {
-      let btn = Components[i]
-      if (btn instanceof ButtonComponent) {
-        if (mXr > btn.x && mYr > btn.y && mXr < btn.x + btn.w && mYr < btn.y + btn.h) {
-          btn.hovered = true
-        } else if (btn.hovered) {
-          btn.hovered = false
-        }
-
-        if (btn instanceof TowerButton) {
-          btn.disabled = btn.towerObj.cost > Game.money
-          btn.active = Game.tower === i
-        }
-      }
+    // Only tick towers when the game is in the play state
+    if (Game.state === 1) {
+      tickTowers()
     }
 
+    // Move enemies
+    updateEnemyMovements()
+
+    // Move bullets
+    tickParticles()
+
+    // Move sell texts
+    tickSellText()
+
+    // Update all components (eg buttons)
+    updateComponents()
+
+    // Set the state
     updateGameState()
+
+    // Increment game clock
     if (Game.state === 1) {
       Game.waveTimer++
     }
@@ -690,13 +979,14 @@ window.onload = function () {
     ctx.fillStyle = '#0fa'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
+    // Draw the map
     for (let i in Game.map.tiles) {
       let tile = Game.map.tiles[i]
       let index = parseInt(i)
       let y = Math.floor(index / Maps.width)
       let x = Math.floor(index % Maps.height)
-      var draw_tile = true
-      
+      let draw_tile = true
+     
       if (tile === 1) {
         ctx.fillStyle = '#fdd'
       } else if (tile === 2) {
@@ -707,28 +997,34 @@ window.onload = function () {
         draw_tile = false
       }
 
-      if(draw_tile) {
+      if (draw_tile) {
         ctx.fillRect(x * mt, y * mt, mt, mt)
       }
 
-      if(Game.state == 2 && tile == 0 && !getTowerAt(x, y) && !canPlaceTowerAt(x, y)) {
+      // Draw obstructed tiles
+      if (Game.state == 2 && tile == 0 && !getTowerAt(x, y) && !canPlaceTowerAt(x, y)) {
         ctx.fillStyle = 'rgba(255, 0, 0, 0.45)'
         ctx.fillRect(x * mt, y * mt, mt, mt)
       }
     }
-/*
-    for (let i in Game.map.pathgen) {
-      let node = Game.map.pathgen[i]
-      ctx.fillStyle = '#00f'
-      ctx.fillRect((node.x * mt) + mt / 3, (node.y * mt) + mt / 3, 8, 8)
+
+    // Show the enemy movement path
+    if (Game.debug) {
+      for (let i in Game.map.pathgen) {
+        let node = Game.map.pathgen[i]
+        ctx.fillStyle = '#00f'
+        ctx.fillRect((node.x * mt) + mt / 3, (node.y * mt) + mt / 3, 8, 8)
+      }
     }
-*/
+
+    // Draw towers
     for (let i in Game.towers) {
       let tower = Game.towers[i]
       ctx.fillStyle = tower.icon
       ctx.fillRect(tower.x * mt + 2, tower.y * mt + 2, 28, 28)
     }
 
+    // Draw enemies
     for (let i in Game.enemies) {
       let enemy = Game.enemies[i]
       let rx = (enemy.x * mt) + mt / 8
@@ -746,31 +1042,53 @@ window.onload = function () {
       ctx.fillRect(hx, hy, (16 + 12) * enemy.dmg / enemy.health, 5)
     }
 
+    // Draw bullets
     for (let i in Game.particles) {
       let tower = Game.particles[i]
       ctx.fillStyle = '#f33'
       ctx.fillRect(tower.x * mt + mt / 16, tower.y * mt + mt / 16, 8, 8)
     }
 
-    // tower placement
-    if (Game.state === 2 && Game.tower && mX < Maps.width && mY < Maps.height) {
-      // tower range visualization
-      let towerData = Towers[Game.tower]
-      if (towerData.cost <= Game.money && canPlaceTowerAt (mX, mY)) {
-        let towerData = Towers[Game.tower]
-        ctx.strokeStyle = '#ddd'
-        ctx.fillStyle = 'rgba(200, 200, 200, 0.25)'
-        ctx.beginPath()
-        ctx.arc(mX * mt + mt / 2, mY * mt + mt / 2, towerData.range * mt, 0, 2 * Math.PI)
-        ctx.stroke()
-        ctx.fill()
-        ctx.closePath()
-      }
+    // Tower range visualization
+    let towerData = Towers[Game.tower]
+    let vX = null
+    let vY = null
+
+    // Render the currently selected tower's range if present
+    if (Game.towerSel) {
+      towerData = Game.towerSel
+      vX = towerData.x
+      vY = towerData.y
+    } else if (towerData != null && towerData.cost <= Game.money && canPlaceTowerAt (mX, mY) &&
+        mX < Maps.width && mY < Maps.height && Game.state === 2) {
+      vX = mX
+      vY = mY
     }
 
+    // Render range
+    if (vX != null && vY != null && towerData) {
+      ctx.strokeStyle = '#ddd'
+      ctx.fillStyle = 'rgba(200, 200, 200, 0.25)'
+      ctx.beginPath()
+      ctx.arc(vX * mt + mt / 2, vY * mt + mt / 2, towerData.range * mt, 0, 2 * Math.PI)
+      ctx.stroke()
+      ctx.fill()
+      ctx.closePath()
+    }
+
+    // Render sell text
+    for (let i in Game.selltext) {
+      let txt = Game.selltext[i]
+      ctx.font = '12px Helvetica'
+      ctx.fillStyle = '#0a0'
+      ctx.fillText('+ $' + txt.amount, txt.x * mt, txt.y * mt)
+    }
+
+    // Render sidebar background
     ctx.fillStyle = '#996633'
     ctx.fillRect(640, 0, 240, 640)
 
+    // Render sidebar text
     ctx.font = '20px Helvetica'
     ctx.fillStyle = '#fff'
     ctx.fillText('FPS: ' + fpsDraw.toFixed(2), 0, 20)
@@ -778,20 +1096,24 @@ window.onload = function () {
     ctx.fillText('Health: ' + Game.health, 645, 45)
     ctx.fillText('Money: ' + Game.money, 645, 65)
 
-    for (let i in Components) {
-      let btn = Components[i]
-      btn.draw()
-    }
-
+    // Game Over text
     if (Game.state === -1) {
       ctx.font = '80px Helvetica'
       ctx.fillStyle = '#f00'
       ctx.fillText('Game Over', 100, canvas.height / 2 - 80 / 2)
     }
 
+    // Draw mouse cursor
     if (mX < Maps.width && mY < Maps.height) {
       ctx.fillStyle = 'rgba(255, 0, 0, 0.24)'
       ctx.fillRect(mX * mt, mY * mt, mt, mt)
+    }
+
+    // Draw all components
+    for (let i in Components) {
+      let cmp = Components[i]
+      if (!(cmp) instanceof Component) continue
+      cmp.draw()
     }
   }
 
@@ -803,6 +1125,7 @@ window.onload = function () {
     update()
     render()
 
+    // Update FPS
     let cfps = 1000 / ((now = new Date) - lastTime)
     if (now != lastTime) {
       fps += (cfps - fps) / fpsRes
@@ -815,25 +1138,48 @@ window.onload = function () {
   function initialize () {
     Game.map = Maps.generate()
 
+    // Next wave button
     Components.wave = new ButtonComponent('Next Wave', '#fff', '#11f', 650, 570, 200, 60, () => {
       updateGameState(1)
     })
 
+    // Tower information box
+    Components.info = new InfoDialog()
+
+    // Add buy buttons to every tower
     let index = 0
     for (let i in Towers) {
       Components[i] = new TowerButton(i, index)
       index++
     }
 
+    // Tooltip
+    Components.tooltip = new Tooltip()
+    for (let i in Towers) {
+      let cmp = Components[i]
+      if (!cmp) continue
+      Components.tooltip.addComponent(cmp, cmp.towerObj.description)
+    }
+
+    // Start the game
     gameLoop()
   }
 
   canvas.addEventListener('click', (e) => {
-    if (Game.state === 2 && mX < Maps.width && mY < Maps.height && Game.tower) {
+    if (clickBtn()) return
+    if (mX < Maps.width && mY < Maps.height) {
+      // Select a tower if present
+      if (getTowerAt(mX, mY)) {
+        return selectTower(mX, mY)
+      } else if (Game.towerSel) {
+        Game.towerSel = null
+        return
+      }
+
+      // Place a tower
+      if (!Game.tower || Game.state !== 2) return
       placeTower(Towers[Game.tower], mX, mY)
     }
-
-    clickBtn()
   })
   
   canvas.addEventListener('contextmenu', (e) => {
