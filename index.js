@@ -171,6 +171,7 @@ window.onload = function () {
           type: 'recurring',
           waveLow: 0,
           waveHigh: 10,
+          oneAfterAnother: false,
           enemies: [{
             type: 'basic',
             count: 5,
@@ -182,6 +183,7 @@ window.onload = function () {
           type: 'recurring',
           waveLow: 10,
           waveHigh: 15,
+          oneAfterAnother: false,
           enemies: [{
             type: 'basic',
             count: 5,
@@ -198,24 +200,24 @@ window.onload = function () {
         {
           type: 'recurring',
           waveLow: 15,
+          oneAfterAnother: false,
           enemies: [{
             type: 'basic',
             count: 5,
             inclCount: true,
-            inclHealth: true,
-            inclSpeed: true
+            inclHealth: true
           },
           {
             type: 'speedy',
             count: 10,
             inclCount: true,
-            inclHealth: true,
-            inclSpeed: true
+            inclHealth: true
           }]
         },
         {
           type: 'once-every',
           every: 5,
+          oneAfterAnother: false,
           enemies: [{
             type: 'tough',
             count: 5,
@@ -225,7 +227,7 @@ window.onload = function () {
         },
         {
           type: 'once',
-          wave: 5,
+          wave: 3,
           enemies: [{
             type: 'tough',
             count: 2
@@ -578,6 +580,7 @@ window.onload = function () {
   function addEnemies (enemies, type, specs) {
     let path = Game.map.pathgen[0]
     let enemy = Enemies[type]
+
     // Copy the enemy and add x and y coordinates
     let enemyCopy = Object.assign({
       x: path.x,
@@ -597,11 +600,13 @@ window.onload = function () {
 
     // Insert them into the spawn queue
     for (let i = 0; i < enemies; i++) {
+      let spawnTime = enemyCopy.frequency * i + (specs.multiply ? (specs.multiply * (enemies * enemyCopy.frequency)) : 0)
       if (Game.debug) {
-        console.log('added %s to spawn at %d', type, enemyCopy.frequency * i)
+        console.log('added %s to spawn at %d', type, spawnTime)
       }
+
       Game.enemySpawnList.push(Object.assign({
-        time: enemyCopy.frequency * i
+        time: spawnTime
       }, enemyCopy))
     }
   }
@@ -625,7 +630,7 @@ window.onload = function () {
         let e = wv.enemies[i]
         let eCount = e.count || 5
         let eHealthIncl = 0
-        let eSpeedIncl = 0
+        let multiply = wv.oneAfterAnother != null ? wv.oneAfterAnother : false
 
         if (e.inclCount === true) {
           eCount += Game.wave
@@ -635,10 +640,6 @@ window.onload = function () {
           eHealthIncl = e.baseHealth
         }
 
-        if (e.baseSpeed) {
-          eSpeedIncl = e.baseSpeed
-        }
-
         if (e.inclHealth === true) {
           eHealthIncl = Game.wave * 5
           if (eHealthIncl > 500) {
@@ -646,16 +647,9 @@ window.onload = function () {
           }
         }
 
-        if (e.inclSpeed === true) {
-          eSpeedIncl = Game.wave / 5
-          if (eSpeedIncl > 5) {
-            eSpeedIncl = 5
-          }
-        }
-
         addEnemies(eCount, e.type, {
           healthIncrease: eHealthIncl,
-          speedIncrease: eSpeedIncl
+          multiply: multiply ? parseInt(i) : false
         })
       }
     }
