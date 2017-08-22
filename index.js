@@ -586,7 +586,7 @@ window.onload = function () {
       let index = parseInt(i)
       let y = Math.floor(index / Maps.width)
       let x = Math.floor(index % Maps.height)
-
+      
       if (tile === 1) {
         ctx.fillStyle = '#fdd'
       } else if (tile === 2) {
@@ -598,6 +598,11 @@ window.onload = function () {
       }
 
       ctx.fillRect(x * mt, y * mt, mt, mt)
+
+      if(Game.state == 2 && tile == 0 && !getTowerAt(x, y) && !canPlaceTowerAt(x, y)) {
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.45)'
+        ctx.fillRect(x * mt, y * mt, mt, mt)
+      }
     }
 /*
     for (let i in Game.map.pathgen) {
@@ -610,28 +615,6 @@ window.onload = function () {
       let tower = Game.towers[i]
       ctx.fillStyle = tower.icon
       ctx.fillRect(tower.x * mt + 2, tower.y * mt + 2, 28, 28)
-
-      if (Game.state === 2 && Game.tower) {
-        // tower placement restriction visualization
-        for (let i = 0; i < 4; i++) {
-          let ax = tower.x
-          let ay = tower.y
-          if (i == 0) {
-            ax -= 1
-          } else if (i == 1) {
-            ax += 1
-          } else if (i == 2) {
-            ay -= 1
-          } else if (i == 3) {
-            ay += 1
-          }
-          
-          if (ax < 0 || ay < 0 || ay > Maps.height || ax > Maps.width) continue
-          if (getTileIn(Game.map.tiles, ax, ay) !== 0) continue
-          ctx.fillStyle = 'rgba(255, 0, 0, 0.45)'
-          ctx.fillRect(ax * mt, ay * mt, mt, mt)
-        }
-      }
     }
 
     for (let i in Game.enemies) {
