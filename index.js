@@ -27,14 +27,13 @@ window.onload = function () {
   let Game = {
     state: 2,
     enemies: [],
+    enemySpawnList: [],
     towers: [],
     particles: [],
     selltext: [],
     map: null,
     health: 100,
     money: 100,
-    enemySpawn: 0,
-    pace: 1,
     wave: 0,
     waveTimer: 0,
     tower: 'simple',
@@ -57,7 +56,7 @@ window.onload = function () {
       node: 1,
       health: 50,
       reward: 10,
-      frequency: 1000,
+      frequency: 40,
       icon: '#f00'
     },
     speedy: {
@@ -65,15 +64,15 @@ window.onload = function () {
       node: 1,
       health: 60,
       reward: 15,
-      frequency: 500,
+      frequency: 35,
       icon: '#f11'
     },
     tough: {
       speed: 5,
       node: 1,
-      health: 150,
+      health: 80,
       reward: 20,
-      frequency: 1000,
+      frequency: 40,
       icon: '#f40'
     }
   }
@@ -166,6 +165,74 @@ window.onload = function () {
         {x: 5, y: 12, end: false},
         {x: 1, y: 12, end: false},
         {x: 1, y: 17, end: true},
+      ],
+      waves: [
+        {
+          type: 'recurring',
+          waveLow: 0,
+          waveHigh: 10,
+          oneAfterAnother: false,
+          enemies: [{
+            type: 'basic',
+            count: 5,
+            inclCount: true,
+            inclHealth: true
+          }]
+        },
+        {
+          type: 'recurring',
+          waveLow: 10,
+          waveHigh: 15,
+          oneAfterAnother: false,
+          enemies: [{
+            type: 'basic',
+            count: 5,
+            inclCount: true,
+            inclHealth: true
+          },
+          {
+            type: 'speedy',
+            count: 10,
+            inclCount: true,
+            inclHealth: true
+          }]
+        },
+        {
+          type: 'recurring',
+          waveLow: 15,
+          oneAfterAnother: false,
+          enemies: [{
+            type: 'basic',
+            count: 5,
+            inclCount: true,
+            inclHealth: true
+          },
+          {
+            type: 'speedy',
+            count: 10,
+            inclCount: true,
+            inclHealth: true
+          }]
+        },
+        {
+          type: 'once-every',
+          every: 5,
+          oneAfterAnother: false,
+          enemies: [{
+            type: 'tough',
+            count: 5,
+            inclCount: true,
+            inclHealth: true
+          }]
+        },
+        {
+          type: 'once',
+          wave: 3,
+          enemies: [{
+            type: 'tough',
+            count: 2
+          }]
+        }
       ]
     },
     generate: function(targetLength) {
@@ -472,7 +539,7 @@ window.onload = function () {
 
     update () {
       super.update()
-      this.disabled = this.towerObj.cost > Game.money
+      this.disabled = this.towerObj.cost > Game.money && !Game.debug
       this.active = Game.tower === this.tower
       this.elUpdate()
     }
@@ -616,39 +683,84 @@ window.onload = function () {
     }
   }
 
-  // Use this function to spawn enemies depending on round
-  function nextWave () {
-    Game.wave++
-    
-    if (Game.wave < 5) {
-      addEnemies(10 + Game.wave, Enemies.basic)
-    } else {
-      addEnemies(10 + Game.wave, Enemies.speedy)
+  // Total enemy spawn count is used to determine that the round is over
+  // Local (in-function) determines how many there are left to spawn as ordered by the function call
+  function addEnemies (enemies, type, specs) {
+    let path = Game.map.pathgen[0]
+    let enemy = Enemies[type]
+
+    // Copy the enemy and add x and y coordinates
+    let enemyCopy = Object.assign({
+      x: path.x,
+      y: path.y
+    }, enemy)
+
+    // Modify the enemy according to wave settings
+    if (specs.healthIncrease) {
+      enemyCopy.health += specs.healthIncrease
     }
 
-    if (Game.wave > 10) {
-      addEnemies(Game.wave - 5, Enemies.tough)
+    if (specs.speedIncrease) {
+      enemyCopy.speed += specs.speedIncrease
     }
 
-    if (Game.wave % 5 === 0) {
-      addEnemies(Game.wave / 5, Enemies.tough)
+    enemyCopy.dmg = enemyCopy.health
+
+    // Insert them into the spawn queue
+    for (let i = 0; i < enemies; i++) {
+      let spawnTime = enemyCopy.frequency * i + (specs.multiply ? (specs.multiply * (enemies * enemyCopy.frequency)) : 0)
+      if (Game.debug) {
+        console.log('added %s to spawn at %d', type, spawnTime)
+      }
+
+      Game.enemySpawnList.push(Object.assign({
+        time: spawnTime
+      }, enemyCopy))
     }
   }
 
-  // Use this function to modify the enemies spawned each round
-  function waveEnemyModifer (enemy, round) {
-    // Reduce the time between enemy spawns
-    let fr = enemy.frequency - 5 * round
-    if (fr < 100) {
-      fr = 100
+  function nextWave () {
+    Game.wave++
+    
+    for (let i in Game.map.waves) {
+      let wv = Game.map.waves[i]
+      let eSpawn = false
+      if (wv.type === 'once-every' && Game.wave % wv.every === 0) {
+        eSpawn = true
+      } else if (wv.type === 'once' && Game.wave === wv.wave) {
+        eSpawn = true
+      } else if (wv.type === 'recurring' && Game.wave >= wv.waveLow && (wv.waveHigh ? Game.wave < wv.waveHigh : true)) {
+        eSpawn = true
+      }
+
+      if (!eSpawn) continue
+      for (let i in wv.enemies) {
+        let e = wv.enemies[i]
+        let eCount = e.count || 5
+        let eHealthIncl = 0
+        let multiply = wv.oneAfterAnother != null ? wv.oneAfterAnother : false
+
+        if (e.inclCount === true) {
+          eCount += Game.wave
+        }
+
+        if (e.baseHealth) {
+          eHealthIncl = e.baseHealth
+        }
+
+        if (e.inclHealth === true) {
+          eHealthIncl = Game.wave * 5
+          if (eHealthIncl > 500) {
+            eHealthIncl = 500
+          }
+        }
+
+        addEnemies(eCount, e.type, {
+          healthIncrease: eHealthIncl,
+          multiply: multiply ? parseInt(i) : false
+        })
+      }
     }
-
-    enemy.frequency = fr
-
-    // Increase enemy health
-    enemy.health += round * 5
-
-    return enemy
   }
 
   function getTileIn (map, x, y) {
@@ -692,8 +804,8 @@ window.onload = function () {
       }
 
       if (enemy.velocity.dist > 0.1) {
-        enemy.x += (enemy.velocity.x * 0.01) * enemy.speed * Game.pace
-        enemy.y += (enemy.velocity.y * 0.01) * enemy.speed * Game.pace
+        enemy.x += (enemy.velocity.x * 0.01) * enemy.speed
+        enemy.y += (enemy.velocity.y * 0.01) * enemy.speed
       } else {
         if (Game.map.pathgen[enemy.node + 1]) {
           enemy.node += 1
@@ -707,7 +819,7 @@ window.onload = function () {
       }
     }
 
-    if (Game.state === 1 && Game.enemies.length === 0 && Game.enemySpawn === 0) {
+    if (Game.state === 1 && Game.enemies.length === 0 && Game.enemySpawnList.length === 0) {
       updateGameState(2)
     }
   }
@@ -830,31 +942,16 @@ window.onload = function () {
     Game.towerSel = tower
   }
 
-  // Total enemy spawn count is used to determine that the round is over
-  // Local (in-function) determines how many there are left to spawn as ordered by the function call
-  function addEnemies (cnt, type) {
-    Game.enemySpawn += cnt // Total amount of enemies to spawn
-    let enemies = cnt // Local amount of enemies to spawn
-
-    let path = Game.map.pathgen[0]
-    // Copy the enemy and add x and y coordinates
-    let enemyCopy = Object.assign({
-      x: path.x,
-      y: path.y
-    }, type)
-
-    // Modify the enemy according to wave settings
-    enemyCopy = waveEnemyModifer(enemyCopy, Game.wave)
-    enemyCopy.dmg = enemyCopy.health
-
-    // Copy the enemy at an interval and spawn it
-    let ect = setInterval(() => {
-      if (enemies === 0) return clearInterval(ect)
-      Game.enemySpawn-- // Reduce total spawn count
-      enemies-- // Reduce local spawn count
-
-      Game.enemies.push(Object.assign({}, enemyCopy))
-    }, enemyCopy.frequency)
+  function spawnQueue () {
+    if (Game.enemySpawnList.length) {
+      for (let i in Game.enemySpawnList) {
+        let ef = Game.enemySpawnList[i]
+        if (ef.time < Game.waveTimer) {
+          Game.enemies.push(ef)
+          Game.enemySpawnList.splice(i, 1)
+        }
+      }
+    }
   }
 
   function getTowerAt (x, y) {
@@ -875,9 +972,9 @@ window.onload = function () {
 
     // Prevent towers from being placed right next to each-other
     let can = true
-    for (let i in Game.towers) {
+    for (let j in Game.towers) {
       if (can === false) break
-      let tower = Game.towers[i]
+      let tower = Game.towers[j]
 
       // tower placement restriction visualization
       for (let i = 0; i < 4; i++) {
@@ -903,11 +1000,14 @@ window.onload = function () {
   }
 
   function placeTower (tower, x, y) {
-    if (tower.cost > Game.money) return // no money
+    if (tower.cost > Game.money && !Game.debug) return // no money
 
     if (!canPlaceTowerAt(x, y)) return
 
-    Game.money -= tower.cost
+    if (!Game.debug) {
+      Game.money -= tower.cost
+    }
+
     Game.towers.push(Object.assign({
       x: x,
       y: y,
@@ -972,8 +1072,11 @@ window.onload = function () {
     if (Game.state === 1) {
       Game.waveTimer++
     }
+
+    spawnQueue()
   }
 
+  let lastRenderTime = Date.now()
   function render () {
     let mt = Maps.tile
     ctx.fillStyle = '#0fa'
@@ -1002,8 +1105,8 @@ window.onload = function () {
       }
 
       // Draw obstructed tiles
-      if (Game.state == 2 && tile == 0 && !getTowerAt(x, y) && !canPlaceTowerAt(x, y)) {
-        ctx.fillStyle = 'rgba(255, 0, 0, 0.45)'
+      if (Game.state === 2 && tile === 0 && !canPlaceTowerAt(x, y)) {
+        ctx.fillStyle = '#738c5d'
         ctx.fillRect(x * mt, y * mt, mt, mt)
       }
     }
@@ -1022,15 +1125,23 @@ window.onload = function () {
       let tower = Game.towers[i]
       ctx.fillStyle = tower.icon
       ctx.fillRect(tower.x * mt + 2, tower.y * mt + 2, 28, 28)
+
+      if (Game.debug) {
+        ctx.fillStyle = '#f11'
+        ctx.font = '10px Helvetica'
+        ctx.fillText(tower.tick, tower.x * mt + 10, tower.y * mt + 25)
+      }
     }
 
     // Draw enemies
     for (let i in Game.enemies) {
+      let margin = .25 //A ratio of the width of a tile.  .25 margins with 32 px tiles leave a 8 px margin on all sides, with the body being 16px x 16px
       let enemy = Game.enemies[i]
-      let rx = (enemy.x * mt) + mt / 8
-      let ry = (enemy.y * mt) + mt / 8
+      let rx = (enemy.x + margin) * mt
+      let ry = (enemy.y + margin) * mt
+      let w = mt * (1 - margin * 2)
       ctx.fillStyle = enemy.icon
-      ctx.fillRect(rx, ry, 16, 16)
+      ctx.fillRect(rx, ry, w, w)
 
       // health bars
       let hx = rx - 6
@@ -1040,6 +1151,12 @@ window.onload = function () {
 
       ctx.fillStyle = '#0f0'
       ctx.fillRect(hx, hy, (16 + 12) * enemy.dmg / enemy.health, 5)
+      
+      if (Game.debug) {
+        ctx.fillStyle = '#511'
+        ctx.font = '10px Helvetica'
+        ctx.fillText(enemy.dmg, hx + 10, hy + 25)
+      }
     }
 
     // Draw bullets
@@ -1059,7 +1176,7 @@ window.onload = function () {
       towerData = Game.towerSel
       vX = towerData.x
       vY = towerData.y
-    } else if (towerData != null && towerData.cost <= Game.money && canPlaceTowerAt (mX, mY) &&
+    } else if (towerData != null && towerData.cost <= Game.money && canPlaceTowerAt(mX, mY) &&
         mX < Maps.width && mY < Maps.height && Game.state === 2) {
       vX = mX
       vY = mY
@@ -1114,6 +1231,17 @@ window.onload = function () {
       let cmp = Components[i]
       if (!(cmp) instanceof Component) continue
       cmp.draw()
+    }
+
+    if (Game.debug) {
+      ctx.fillStyle = '#f11'
+      ctx.font = '10px Helvetica'
+      ctx.fillText('enemy queue length ' + Game.enemySpawnList.length, 5, 580)
+      ctx.fillText('enemy count ' + Game.enemies.length, 5, 590)
+      ctx.fillText('tower count ' + Game.towers.length, 5, 600)
+      ctx.fillText('particle count ' + Game.particles.length, 5, 610)
+      ctx.fillText('render tick ms ' + (Date.now() - lastRenderTime), 5, 620)
+      lastRenderTime = Date.now()
     }
   }
 
