@@ -603,7 +603,11 @@ window.onload = function () {
       fpsDraw = fps
     }
     
-    tickTowers()
+    // Only tick towers when the game is in the play state
+    if (Game.state === 1) {
+      tickTowers()
+    }
+
     updateEnemyMovements()
     tickParticles()
     tickSellText()
