@@ -178,6 +178,7 @@ window.onload = function () {
       this.color = color
       this.disabled = false
       this.hovered = false
+      this.font = '20px Helvetica'
     }
     
     draw () {
@@ -324,6 +325,7 @@ window.onload = function () {
     if (Game.state !== -1 && Game.health <= 0) {
       Game.health = 0
       Game.state = -1
+      Game.towerSel = null
     }
 
     if (Game.state === 2 && gst === 1) {
