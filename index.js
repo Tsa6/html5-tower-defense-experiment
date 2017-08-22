@@ -579,14 +579,16 @@ window.onload = function () {
 
   function render () {
     let mt = Maps.tile
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.fillStyle = '#0fa'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
 
     for (let i in Game.map.tiles) {
       let tile = Game.map.tiles[i]
       let index = parseInt(i)
       let y = Math.floor(index / Maps.width)
       let x = Math.floor(index % Maps.height)
-      
+      var draw_tile = true
+     
       if (tile === 1) {
         ctx.fillStyle = '#fdd'
       } else if (tile === 2) {
@@ -594,13 +596,10 @@ window.onload = function () {
       } else if (tile === 3) {
         ctx.fillStyle = '#f3a'
       } else {
-        ctx.fillStyle = '#0fa'
+        draw_tile = false
       }
 
-      ctx.fillRect(x * mt, y * mt, mt, mt)
-
-      if(Game.state == 2 && tile == 0 && !getTowerAt(x, y) && !canPlaceTowerAt(x, y)) {
-        ctx.fillStyle = 'rgba(255, 0, 0, 0.45)'
+      if(draw_tile) {
         ctx.fillRect(x * mt, y * mt, mt, mt)
       }
     }
