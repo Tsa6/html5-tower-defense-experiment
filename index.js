@@ -34,7 +34,7 @@ window.onload = function () {
     map: null,
     health: 100,
     money: 100,
-    wave: 15,
+    wave: 0,
     waveTimer: 0,
     tower: 'simple',
     towerSel: null,
